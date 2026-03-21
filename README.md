@@ -11,12 +11,14 @@ Building LLM web scraper with headless browser to read web, convert to markdown,
 
 ## How to use
 
-1. Start Lightpanda (pick one):
+1. Start Lightpanda (pick one) or Chomedp:
 ```
 Binary
 $ ./lightpanda serve --host 127.0.0.1 --port 9222
 Or Docker
 $ docker run -d --name lightpanda -p 9222:9222 lightpanda/browser:nightly
+chromedp
+$ docker run -d -p 9222:9222 --rm --name headless-shell chromedp/headless-shell
 ```
    
 2. Verify MarkItDown CLI is available:
