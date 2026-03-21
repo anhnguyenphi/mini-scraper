@@ -22,6 +22,8 @@ type Config struct {
 	Model         string
 	GeminiAPIKey  string
 	GeminiBaseURL string
+	SystemPrompt  string
+	UserPrompt    string
 }
 
 // DefaultConfig returns sensible defaults for Ollama.
@@ -89,15 +91,28 @@ type geminiResponse struct {
 	} `json:"error"`
 }
 
-func summarizationSystemPrompt() string {
-	return `You are a helpful assistant that summarizes online shopping product pages.
+const defaultSystemPrompt = `You are a helpful assistant that summarizes online shopping product pages.
 	Start with shop overview then focus on the brand identity, the price range (budget, mid-range, or luxury),
 	the primary product categories, payment options, shipping options under 300 words.
 	Do not include any other text than the summary.`
+
+const defaultUserPromptTemplate = `Please summarize the following web page content:
+
+{{content}}`
+
+func (s *Summarizer) buildSystemPrompt() string {
+	if strings.TrimSpace(s.cfg.SystemPrompt) != "" {
+		return s.cfg.SystemPrompt
+	}
+	return defaultSystemPrompt
 }
 
-func summarizationUserPrompt(markdown string) string {
-	return fmt.Sprintf("Please summarize the following web page content:\n\n%s", markdown)
+func (s *Summarizer) buildUserPrompt(markdown string) string {
+	template := s.cfg.UserPrompt
+	if strings.TrimSpace(template) == "" {
+		template = defaultUserPromptTemplate
+	}
+	return strings.ReplaceAll(template, "{{content}}", markdown)
 }
 
 // Summarize takes markdown content and returns a summary from the configured provider.
@@ -120,9 +135,9 @@ func (s *Summarizer) Summarize(ctx context.Context, markdown string) (string, er
 func (s *Summarizer) summarizeWithOllama(ctx context.Context, markdown string) (string, error) {
 	reqBody := ollamaRequest{
 		Model:  s.cfg.Model,
-		Prompt: summarizationUserPrompt(markdown),
+		Prompt: s.buildUserPrompt(markdown),
 		Stream: false,
-		System: summarizationSystemPrompt(),
+		System: s.buildSystemPrompt(),
 	}
 
 	baseURL := strings.TrimRight(s.cfg.BaseURL, "/")
@@ -183,13 +198,13 @@ func (s *Summarizer) summarizeWithGemini(ctx context.Context, markdown string) (
 	reqBody := geminiRequest{
 		SystemInstruction: geminiSystemInstruction{
 			Parts: []geminiPart{
-				{Text: summarizationSystemPrompt()},
+				{Text: s.buildSystemPrompt()},
 			},
 		},
 		Contents: []geminiContent{
 			{
 				Parts: []geminiPart{
-					{Text: summarizationUserPrompt(markdown)},
+					{Text: s.buildUserPrompt(markdown)},
 				},
 			},
 		},

@@ -1,0 +1,37 @@
+services:
+  app:
+    build: .
+    ports:
+      - "${LISTEN:-8080}:8080"
+    env_file: .env
+    environment:
+      LISTEN: ":8080"
+      CDP_URL: "${CDP_URL:-ws://chromedp:9222}"
+      OLLAMA_URL: "${OLLAMA_URL:-http://ollama:11434}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-qwen3.5:0.8b}"
+      GEMINI_BASE_URL: "${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}"
+      GEMINI_MODEL: "${GEMINI_MODEL:-gemini-2.5-flash}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+    depends_on:
+      chromedp:
+        condition: service_started
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  chromedp:
+    image: chromedp/headless-shell:latest
+    expose:
+      - "9222"
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    expose:
+      - "11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama-data:

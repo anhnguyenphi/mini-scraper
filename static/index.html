@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scraper AI</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:2rem}
+h1{font-size:1.8rem;margin-bottom:.5rem}
+.subtitle{color:#94a3b8;margin-bottom:2rem}
+.container{width:100%;max-width:800px}
+.card{background:#1e293b;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem}
+label{display:block;font-size:.875rem;color:#94a3b8;margin-bottom:.5rem}
+input,select,textarea{width:100%;padding:.75rem;border:1px solid #334155;border-radius:8px;background:#0f172a;color:#e2e8f0;font-size:.95rem}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#3b82f6}
+textarea{min-height:120px;resize:vertical;font-family:monospace;font-size:.85rem}
+.row{display:flex;gap:1rem;margin-bottom:1rem}
+.row>*{flex:1}
+.options{display:flex;gap:1rem;align-items:center;margin-bottom:1rem}
+.checkbox-label{display:flex;align-items:center;gap:.5rem;cursor:pointer;color:#94a3b8;font-size:.875rem}
+.checkbox-label input{width:auto}
+button{padding:.75rem 1.5rem;border:none;border-radius:8px;background:#3b82f6;color:#fff;font-size:1rem;font-weight:600;cursor:pointer;width:100%;transition:background .2s}
+button:hover{background:#2563eb}
+button:disabled{background:#475569;cursor:not-allowed}
+.collapsible{cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;padding:.75rem 0;color:#94a3b8;font-size:.875rem;border-top:1px solid #334155;margin-top:1rem}
+.collapsible:hover{color:#e2e8f0}
+.collapsible .arrow{transition:transform .2s}
+.collapsible.open .arrow{transform:rotate(90deg)}
+.collapsible-body{display:none;overflow:hidden}
+.collapsible-body.open{display:block}
+.spinner{display:inline-block;width:1rem;height:1rem;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .6s linear infinite;margin-right:.5rem;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+.result{margin-top:1.5rem}
+.result h2{font-size:1.1rem;margin-bottom:.75rem;color:#94a3b8}
+.error{color:#f87171;background:#1e293b;border:1px solid #f87171;border-radius:8px;padding:1rem}
+.stats{display:flex;gap:1rem;margin-bottom:1rem;font-size:.8rem;color:#64748b}
+.stats span{background:#334155;padding:.25rem .5rem;border-radius:4px}
+.tab-bar{display:flex;gap:0;margin-bottom:0}
+.tab{padding:.75rem 1.25rem;background:#0f172a;border:1px solid #334155;border-bottom:none;cursor:pointer;color:#94a3b8;font-size:.875rem;transition:all .2s}
+.tab:first-child{border-radius:8px 0 0 0}
+.tab:last-child{border-radius:0 8px 0 0}
+.tab.active{background:#1e293b;color:#e2e8f0;border-bottom:1px solid #1e293b;margin-bottom:-1px}
+.tab-content{background:#1e293b;border:1px solid #334155;border-radius:0 8px 8px 8px;padding:1rem}
+</style>
+</head>
+<body>
+<h1>Scraper AI</h1>
+<p class="subtitle">Scrape web pages and summarize with AI</p>
+<div class="container">
+<div class="card">
+<label for="url">URL to scrape</label>
+<input type="url" id="url" placeholder="https://example.com" required>
+<div class="row">
+<div>
+<label for="provider">Summarizer</label>
+<select id="provider">
+<option value="ollama">Ollama</option>
+<option value="gemini">Gemini</option>
+</select>
+</div>
+<div id="ollama-config">
+<label for="ollama-model">Ollama Model</label>
+<input type="text" id="ollama-model" placeholder="qwen3.5:0.8b">
+</div>
+<div id="gemini-config" style="display:none">
+<label for="gemini-key">Gemini API Key</label>
+<input type="password" id="gemini-key" placeholder="Your API key">
+</div>
+</div>
+<div class="options">
+<label class="checkbox-label"><input type="checkbox" id="summarize" checked> Summarize</label>
+<label class="checkbox-label"><input type="checkbox" id="show-raw"> Show raw markdown</label>
+</div>
+<div class="collapsible" onclick="togglePrompts(this)">
+<span>Advanced: Custom Prompts</span>
+<span class="arrow">&#9654;</span>
+</div>
+<div class="collapsible-body" id="prompt-body">
+<label for="system-prompt">System prompt</label>
+<textarea id="system-prompt" rows="4" placeholder="Leave empty for default summarization prompt"></textarea>
+<label for="user-prompt" style="margin-top:.75rem">User prompt template</label>
+<textarea id="user-prompt" rows="4" placeholder="Leave empty for default. Use &#123;&#123;content&#125;&#125; as placeholder for page markdown."></textarea>
+</div>
+<button id="submit" onclick="scrape()">Scrape</button>
+</div>
+<div id="error" class="error" style="display:none"></div>
+<div id="result" class="result" style="display:none">
+<div class="stats" id="stats"></div>
+<div class="tab-bar">
+<div class="tab active" onclick="switchTab('summary',this)">Summary</div>
+<div class="tab" onclick="switchTab('markdown',this)">Markdown</div>
+<div class="tab" onclick="switchTab('html',this)">HTML</div>
+</div>
+<div class="tab-content">
+<pre id="summary-content" style="white-space:pre-wrap;word-break:break-word"></pre>
+<pre id="markdown-content" style="white-space:pre-wrap;word-break:break-word;display:none"></pre>
+<pre id="html-content" style="white-space:pre-wrap;word-break:break-word;display:none;max-height:500px;overflow:auto"></pre>
+</div>
+</div>
+</div>
+<script>
+const provider=document.getElementById('provider');
+const ollamaConfig=document.getElementById('ollama-config');
+const geminiConfig=document.getElementById('gemini-config');
+provider.addEventListener('change',()=>{
+  ollamaConfig.style.display=provider.value==='ollama'?'':'none';
+  geminiConfig.style.display=provider.value==='gemini'?'':'none';
+});
+function switchTab(name,el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  if(el)el.classList.add('active');
+  ['summary','markdown','html'].forEach(n=>{
+    document.getElementById(n+'-content').style.display=n===name?'':'none';
+  });
+}
+function togglePrompts(el){
+  el.classList.toggle('open');
+  document.getElementById('prompt-body').classList.toggle('open');
+}
+async function scrape(){
+  const btn=document.getElementById('submit');
+  const errDiv=document.getElementById('error');
+  const resDiv=document.getElementById('result');
+  errDiv.style.display='none';
+  resDiv.style.display='none';
+  btn.disabled=true;
+  btn.innerHTML='<span class="spinner"></span>Scraping...';
+  try{
+    const body={
+      url:document.getElementById('url').value,
+      provider:provider.value,
+      ollama_model:document.getElementById('ollama-model').value||undefined,
+      summarize:document.getElementById('summarize').checked,
+      system_prompt:document.getElementById('system-prompt').value||undefined,
+      user_prompt:document.getElementById('user-prompt').value||undefined
+    };
+    const headers={'Content-Type':'application/json'};
+    if(provider.value==='gemini'){
+      headers['X-Gemini-API-Key']=document.getElementById('gemini-key').value;
+    }
+    const resp=await fetch('/api/scrape',{method:'POST',headers,body:JSON.stringify(body)});
+    const data=await resp.json();
+    if(data.error){errDiv.textContent=data.error;errDiv.style.display='block';return}
+    document.getElementById('summary-content').textContent=data.summary||'(no summary - check "Summarize" option)';
+    document.getElementById('markdown-content').textContent=data.markdown;
+    document.getElementById('html-content').textContent=data.html;
+    const stats=[];
+    if(data.html)stats.push('<span>HTML: '+data.html.length+' chars</span>');
+    if(data.markdown)stats.push('<span>Markdown: '+data.markdown.length+' chars</span>');
+    document.getElementById('stats').innerHTML=stats.join('');
+    resDiv.style.display='block';
+    switchTab('summary',document.querySelector('.tab'));
+  }catch(e){errDiv.textContent='Request failed: '+e.message;errDiv.style.display='block'}
+  finally{btn.disabled=false;btn.textContent='Scrape'}
+}
+document.getElementById('url').addEventListener('keydown',e=>{if(e.key==='Enter')scrape()});
+</script>
+</body>
+</html>
