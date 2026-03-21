@@ -11,19 +11,22 @@ import (
 )
 
 const (
-	ProviderOllama = "ollama"
-	ProviderGemini = "gemini"
+	ProviderOllama     = "ollama"
+	ProviderGemini     = "gemini"
+	ProviderOpenRouter = "openrouter"
 )
 
 // Config holds summarization provider configuration.
 type Config struct {
-	Provider      string
-	BaseURL       string
-	Model         string
-	GeminiAPIKey  string
-	GeminiBaseURL string
-	SystemPrompt  string
-	UserPrompt    string
+	Provider         string
+	BaseURL          string
+	Model            string
+	GeminiAPIKey     string
+	GeminiBaseURL    string
+	OpenRouterAPIKey string
+	OpenRouterModel  string
+	SystemPrompt     string
+	UserPrompt       string
 }
 
 // DefaultConfig returns sensible defaults for Ollama.
@@ -91,12 +94,41 @@ type geminiResponse struct {
 	} `json:"error"`
 }
 
-const defaultSystemPrompt = `You are a helpful assistant that summarizes online shopping product pages.
-	Start with shop overview then focus on the brand identity, the price range (budget, mid-range, or luxury),
-	the primary product categories, payment options, shipping options under 300 words.
-	Do not include any other text than the summary.`
+type openRouterRequest struct {
+	Model    string              `json:"model"`
+	Messages []openRouterMessage `json:"messages"`
+}
 
-const defaultUserPromptTemplate = `Please summarize the following web page content:
+type openRouterMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type openRouterResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+const defaultSystemPrompt = `You are a helpful assistant that summarizes online shopping product pages.
+Provide a concise summary (maximum 300 words) covering:
+
+- A brief shop overview
+- Brand identity and positioning
+- Price range (budget, mid-range, or luxury)
+- Primary product categories
+- Payment options
+- Shipping options
+
+Keep the response structured, factual, and easy to scan.
+Output only the summary with no additional commentary or explanations.`
+
+const defaultUserPromptTemplate = `Please summarize the following content in markdown format:
 
 {{content}}`
 
@@ -127,8 +159,10 @@ func (s *Summarizer) Summarize(ctx context.Context, markdown string) (string, er
 		return s.summarizeWithOllama(ctx, markdown)
 	case ProviderGemini:
 		return s.summarizeWithGemini(ctx, markdown)
+	case ProviderOpenRouter:
+		return s.summarizeWithOpenRouter(ctx, markdown)
 	default:
-		return "", fmt.Errorf("unsupported provider: %q (supported: %s, %s)", s.cfg.Provider, ProviderOllama, ProviderGemini)
+		return "", fmt.Errorf("unsupported provider: %q (supported: %s, %s, %s)", s.cfg.Provider, ProviderOllama, ProviderGemini, ProviderOpenRouter)
 	}
 }
 
@@ -252,6 +286,72 @@ func (s *Summarizer) summarizeWithGemini(ctx context.Context, markdown string) (
 	text := strings.TrimSpace(gemResp.Candidates[0].Content.Parts[0].Text)
 	if text == "" {
 		return "", fmt.Errorf("gemini returned empty summary")
+	}
+
+	return text, nil
+}
+
+func (s *Summarizer) summarizeWithOpenRouter(ctx context.Context, markdown string) (string, error) {
+	apiKey := strings.TrimSpace(s.cfg.OpenRouterAPIKey)
+	if apiKey == "" {
+		return "", fmt.Errorf("missing OpenRouter API key")
+	}
+
+	model := strings.TrimSpace(s.cfg.OpenRouterModel)
+	if model == "" {
+		model = "google/gemini-2.0-flash-001"
+	}
+
+	reqBody := openRouterRequest{
+		Model: model,
+		Messages: []openRouterMessage{
+			{Role: "system", Content: s.buildSystemPrompt()},
+			{Role: "user", Content: s.buildUserPrompt(markdown)},
+		},
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://openrouter.ai/api/v1/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("openrouter request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+
+	var orResp openRouterResponse
+	if err := json.Unmarshal(respBody, &orResp); err != nil {
+		return "", fmt.Errorf("unmarshal response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		if orResp.Error != nil && strings.TrimSpace(orResp.Error.Message) != "" {
+			return "", fmt.Errorf("openrouter error (status %d): %s", resp.StatusCode, orResp.Error.Message)
+		}
+		return "", fmt.Errorf("openrouter error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	if len(orResp.Choices) == 0 {
+		return "", fmt.Errorf("openrouter returned no choices")
+	}
+
+	text := strings.TrimSpace(orResp.Choices[0].Message.Content)
+	if text == "" {
+		return "", fmt.Errorf("openrouter returned empty summary")
 	}
 
 	return text, nil

@@ -24,6 +24,7 @@ func init() {
 	serveCmd.Flags().String("model", "qwen3.5:0.8b", "Ollama model to use")
 	serveCmd.Flags().String("gemini-model", "gemini-1.5-flash", "Gemini model to use")
 	serveCmd.Flags().String("gemini-base-url", "https://generativelanguage.googleapis.com/v1beta", "Gemini API base URL")
+	serveCmd.Flags().String("openrouter-model", "google/gemini-2.0-flash-001", "OpenRouter model to use")
 	rootCmd.AddCommand(serveCmd)
 }
 
@@ -42,11 +43,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	godotenv.Load()
 
 	cfg := api.Config{
-		CDPURL:        flagOrEnv(cmd, "cdp", "CDP_URL", "ws://127.0.0.1:9222"),
-		OllamaURL:     flagOrEnv(cmd, "ollama", "OLLAMA_URL", "http://127.0.0.1:11434"),
-		OllamaModel:   flagOrEnv(cmd, "model", "OLLAMA_MODEL", "qwen3.5:0.8b"),
-		GeminiModel:   flagOrEnv(cmd, "gemini-model", "GEMINI_MODEL", "gemini-1.5-flash"),
-		GeminiBaseURL: flagOrEnv(cmd, "gemini-base-url", "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
+		CDPURL:          flagOrEnv(cmd, "cdp", "CDP_URL", "ws://127.0.0.1:9222"),
+		OllamaURL:       flagOrEnv(cmd, "ollama", "OLLAMA_URL", "http://127.0.0.1:11434"),
+		OllamaModel:     flagOrEnv(cmd, "model", "OLLAMA_MODEL", "qwen3.5:0.8b"),
+		GeminiModel:     flagOrEnv(cmd, "gemini-model", "GEMINI_MODEL", "gemini-1.5-flash"),
+		GeminiBaseURL:   flagOrEnv(cmd, "gemini-base-url", "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"),
+		OpenRouterModel: flagOrEnv(cmd, "openrouter-model", "OPENROUTER_MODEL", "google/gemini-2.0-flash-001"),
 	}
 
 	listen := flagOrEnv(cmd, "listen", "LISTEN", ":8080")

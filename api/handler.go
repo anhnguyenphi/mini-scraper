@@ -14,11 +14,12 @@ import (
 )
 
 type Config struct {
-	CDPURL        string
-	OllamaURL     string
-	OllamaModel   string
-	GeminiModel   string
-	GeminiBaseURL string
+	CDPURL          string
+	OllamaURL       string
+	OllamaModel     string
+	GeminiModel     string
+	GeminiBaseURL   string
+	OpenRouterModel string
 }
 
 type Handler struct {
@@ -30,15 +31,16 @@ func NewHandler(cfg Config) *Handler {
 }
 
 type ScrapeRequest struct {
-	URL           string `json:"url"`
-	Provider      string `json:"provider"`
-	OllamaURL     string `json:"ollama_url,omitempty"`
-	OllamaModel   string `json:"ollama_model,omitempty"`
-	GeminiModel   string `json:"gemini_model,omitempty"`
-	GeminiBaseURL string `json:"gemini_base_url,omitempty"`
-	Summarize     bool   `json:"summarize"`
-	SystemPrompt  string `json:"system_prompt,omitempty"`
-	UserPrompt    string `json:"user_prompt,omitempty"`
+	URL             string `json:"url"`
+	Provider        string `json:"provider"`
+	OllamaURL       string `json:"ollama_url,omitempty"`
+	OllamaModel     string `json:"ollama_model,omitempty"`
+	GeminiModel     string `json:"gemini_model,omitempty"`
+	GeminiBaseURL   string `json:"gemini_base_url,omitempty"`
+	OpenRouterModel string `json:"openrouter_model,omitempty"`
+	Summarize       bool   `json:"summarize"`
+	SystemPrompt    string `json:"system_prompt,omitempty"`
+	UserPrompt      string `json:"user_prompt,omitempty"`
 }
 
 type ScrapeResponse struct {
@@ -117,16 +119,20 @@ func (h *Handler) handleScrape(w http.ResponseWriter, r *http.Request) {
 
 	if provider == summarizer.ProviderGemini {
 		summCfg.Model = coalesce(req.GeminiModel, h.cfg.GeminiModel)
-	} else {
-		summCfg.Model = coalesce(req.OllamaModel, h.cfg.OllamaModel)
-	}
-
-	if provider == summarizer.ProviderGemini {
 		summCfg.GeminiAPIKey = r.Header.Get("X-Gemini-API-Key")
 		if strings.TrimSpace(summCfg.GeminiAPIKey) == "" {
 			writeError(w, http.StatusBadRequest, "X-Gemini-API-Key header required for gemini provider")
 			return
 		}
+	} else if provider == summarizer.ProviderOpenRouter {
+		summCfg.OpenRouterModel = coalesce(req.OpenRouterModel, h.cfg.OpenRouterModel)
+		summCfg.OpenRouterAPIKey = r.Header.Get("X-OpenRouter-API-Key")
+		if strings.TrimSpace(summCfg.OpenRouterAPIKey) == "" {
+			writeError(w, http.StatusBadRequest, "X-OpenRouter-API-Key header required for openrouter provider")
+			return
+		}
+	} else {
+		summCfg.Model = coalesce(req.OllamaModel, h.cfg.OllamaModel)
 	}
 
 	const maxChars = 50000

@@ -14,15 +14,17 @@ import (
 )
 
 var (
-	cdpURL        string
-	provider      string
-	ollamaURL     string
-	ollamaModel   string
-	geminiModel   string
-	geminiBaseURL string
-	geminiAPIKey  string
-	timeout       int
-	raw           bool
+	cdpURL           string
+	provider         string
+	ollamaURL        string
+	ollamaModel      string
+	geminiModel      string
+	geminiBaseURL    string
+	geminiAPIKey     string
+	openrouterModel  string
+	openrouterAPIKey string
+	timeout          int
+	raw              bool
 )
 
 var rootCmd = &cobra.Command{
@@ -35,11 +37,12 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.Flags().StringVar(&cdpURL, "cdp", "ws://127.0.0.1:9222", "Lightpanda CDP WebSocket URL")
-	rootCmd.Flags().StringVar(&provider, "provider", summarizer.ProviderOllama, "Summarization provider: ollama or gemini")
+	rootCmd.Flags().StringVar(&provider, "provider", summarizer.ProviderOllama, "Summarization provider: ollama, gemini, or openrouter")
 	rootCmd.Flags().StringVar(&ollamaURL, "ollama", "http://127.0.0.1:11434", "Ollama API base URL")
 	rootCmd.Flags().StringVar(&ollamaModel, "model", "qwen3.5:0.8b", "Ollama model to use for summarization")
 	rootCmd.Flags().StringVar(&geminiModel, "gemini-model", "gemini-1.5-flash", "Gemini model to use for summarization")
 	rootCmd.Flags().StringVar(&geminiBaseURL, "gemini-base-url", "https://generativelanguage.googleapis.com/v1beta", "Gemini API base URL")
+	rootCmd.Flags().StringVar(&openrouterModel, "openrouter-model", "google/gemini-2.0-flash-001", "OpenRouter model to use for summarization")
 	rootCmd.Flags().IntVar(&timeout, "timeout", 30, "Timeout in seconds for page loading")
 	rootCmd.Flags().BoolVar(&raw, "raw", false, "Output raw markdown instead of summary")
 }
@@ -98,16 +101,24 @@ func run(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("provider gemini requires GEMINI_API_KEY environment variable")
 		}
 		fmt.Fprintf(os.Stderr, "Summarizing with Gemini model %s ...\n", geminiModel)
+	case summarizer.ProviderOpenRouter:
+		openrouterAPIKey = os.Getenv("OPENROUTER_API_KEY")
+		if strings.TrimSpace(openrouterAPIKey) == "" {
+			return fmt.Errorf("provider openrouter requires OPENROUTER_API_KEY environment variable")
+		}
+		fmt.Fprintf(os.Stderr, "Summarizing with OpenRouter model %s ...\n", openrouterModel)
 	default:
-		return fmt.Errorf("invalid provider %q (supported: %s, %s)", provider, summarizer.ProviderOllama, summarizer.ProviderGemini)
+		return fmt.Errorf("invalid provider %q (supported: %s, %s, %s)", provider, summarizer.ProviderOllama, summarizer.ProviderGemini, summarizer.ProviderOpenRouter)
 	}
 
 	summarizerCfg := summarizer.Config{
-		Provider:      provider,
-		BaseURL:       ollamaURL,
-		Model:         ollamaModel,
-		GeminiAPIKey:  geminiAPIKey,
-		GeminiBaseURL: geminiBaseURL,
+		Provider:         provider,
+		BaseURL:          ollamaURL,
+		Model:            ollamaModel,
+		GeminiAPIKey:     geminiAPIKey,
+		GeminiBaseURL:    geminiBaseURL,
+		OpenRouterAPIKey: openrouterAPIKey,
+		OpenRouterModel:  openrouterModel,
 	}
 
 	if provider == summarizer.ProviderGemini {

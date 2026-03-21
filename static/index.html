@@ -57,6 +57,7 @@ button:disabled{background:#475569;cursor:not-allowed}
 <select id="provider">
 <option value="ollama">Ollama</option>
 <option value="gemini">Gemini</option>
+<option value="openrouter">OpenRouter</option>
 </select>
 </div>
 <div id="ollama-config">
@@ -66,6 +67,12 @@ button:disabled{background:#475569;cursor:not-allowed}
 <div id="gemini-config" style="display:none">
 <label for="gemini-key">Gemini API Key</label>
 <input type="password" id="gemini-key" placeholder="Your API key">
+</div>
+<div id="openrouter-config" style="display:none">
+<label for="openrouter-model">OpenRouter Model</label>
+<input type="text" id="openrouter-model" placeholder="google/gemini-2.0-flash-001">
+<label for="openrouter-key" style="margin-top:.75rem">OpenRouter API Key</label>
+<input type="password" id="openrouter-key" placeholder="Your API key">
 </div>
 </div>
 <div class="options">
@@ -103,9 +110,11 @@ button:disabled{background:#475569;cursor:not-allowed}
 const provider=document.getElementById('provider');
 const ollamaConfig=document.getElementById('ollama-config');
 const geminiConfig=document.getElementById('gemini-config');
+const openrouterConfig=document.getElementById('openrouter-config');
 provider.addEventListener('change',()=>{
   ollamaConfig.style.display=provider.value==='ollama'?'':'none';
   geminiConfig.style.display=provider.value==='gemini'?'':'none';
+  openrouterConfig.style.display=provider.value==='openrouter'?'':'none';
 });
 function switchTab(name,el){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
@@ -131,6 +140,7 @@ async function scrape(){
       url:document.getElementById('url').value,
       provider:provider.value,
       ollama_model:document.getElementById('ollama-model').value||undefined,
+      openrouter_model:document.getElementById('openrouter-model').value||undefined,
       summarize:document.getElementById('summarize').checked,
       system_prompt:document.getElementById('system-prompt').value||undefined,
       user_prompt:document.getElementById('user-prompt').value||undefined
@@ -138,6 +148,8 @@ async function scrape(){
     const headers={'Content-Type':'application/json'};
     if(provider.value==='gemini'){
       headers['X-Gemini-API-Key']=document.getElementById('gemini-key').value;
+    }else if(provider.value==='openrouter'){
+      headers['X-OpenRouter-API-Key']=document.getElementById('openrouter-key').value;
     }
     const resp=await fetch('/api/scrape',{method:'POST',headers,body:JSON.stringify(body)});
     const data=await resp.json();
