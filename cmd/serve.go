@@ -7,6 +7,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/scraper-ai/scraper-ai/api"
+	"github.com/scraper-ai/scraper-ai/cache"
 	"github.com/spf13/cobra"
 )
 
@@ -19,6 +20,7 @@ var serveCmd = &cobra.Command{
 
 func init() {
 	serveCmd.Flags().String("listen", ":8080", "Address to listen on")
+	serveCmd.Flags().String("db", "scraper-ai.db", "SQLite database path for caching")
 	serveCmd.Flags().String("cdp", "ws://127.0.0.1:9222", "Lightpanda CDP WebSocket URL")
 	serveCmd.Flags().String("ollama", "http://127.0.0.1:11434", "Ollama API base URL")
 	serveCmd.Flags().String("model", "qwen3.5:0.8b", "Ollama model to use")
@@ -52,8 +54,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	listen := flagOrEnv(cmd, "listen", "LISTEN", ":8080")
+	dbPath := flagOrEnv(cmd, "db", "DB_PATH", "scraper-ai.db")
 
-	handler := api.NewHandler(cfg)
+	store, err := cache.New(dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to open cache: %w", err)
+	}
+	defer store.Close()
+
+	handler := api.NewHandler(cfg, store)
 
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/scraper-ai/scraper-ai/cache"
 	"github.com/scraper-ai/scraper-ai/converter"
 	"github.com/scraper-ai/scraper-ai/scraper"
 	"github.com/scraper-ai/scraper-ai/summarizer"
@@ -23,11 +24,12 @@ type Config struct {
 }
 
 type Handler struct {
-	cfg Config
+	cfg   Config
+	cache *cache.Store
 }
 
-func NewHandler(cfg Config) *Handler {
-	return &Handler{cfg: cfg}
+func NewHandler(cfg Config, c *cache.Store) *Handler {
+	return &Handler{cfg: cfg, cache: c}
 }
 
 type ScrapeRequest struct {
@@ -78,25 +80,37 @@ func (h *Handler) handleScrape(w http.ResponseWriter, r *http.Request) {
 
 	resp := ScrapeResponse{URL: req.URL}
 
-	scraperCfg := scraper.Config{
-		CDPURL:  h.cfg.CDPURL,
-		Timeout: 30 * time.Second,
-	}
-	s := scraper.New(scraperCfg)
-
-	html, err := s.Fetch(ctx, req.URL)
-	if err != nil {
-		writeError(w, http.StatusBadGateway, fmt.Sprintf("fetch failed: %v", err))
+	if entry, ok, err := h.cache.Get(req.URL); err == nil && ok {
+		resp.HTML = entry.HTML
+		resp.Markdown = entry.Markdown
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("cache read failed: %v", err))
 		return
-	}
-	resp.HTML = html
+	} else {
+		scraperCfg := scraper.Config{
+			CDPURL:  h.cfg.CDPURL,
+			Timeout: 30 * time.Second,
+		}
+		s := scraper.New(scraperCfg)
 
-	markdown, err := converter.HTMLToMarkdown(html)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("convert failed: %v", err))
-		return
+		html, err := s.Fetch(ctx, req.URL)
+		if err != nil {
+			writeError(w, http.StatusBadGateway, fmt.Sprintf("fetch failed: %v", err))
+			return
+		}
+		resp.HTML = html
+
+		markdown, err := converter.HTMLToMarkdown(html)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("convert failed: %v", err))
+			return
+		}
+		resp.Markdown = markdown
+
+		if err := h.cache.Set(req.URL, html, markdown); err != nil {
+			fmt.Printf("cache write failed: %v\n", err)
+		}
 	}
-	resp.Markdown = markdown
 
 	if !req.Summarize {
 		w.Header().Set("Content-Type", "application/json")
@@ -136,6 +150,7 @@ func (h *Handler) handleScrape(w http.ResponseWriter, r *http.Request) {
 	}
 
 	const maxChars = 50000
+	markdown := resp.Markdown
 	if len(markdown) > maxChars {
 		markdown = markdown[:maxChars]
 	}
