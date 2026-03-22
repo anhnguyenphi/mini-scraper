@@ -12,11 +12,40 @@ services:
       GEMINI_BASE_URL: "${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1beta}"
       GEMINI_MODEL: "${GEMINI_MODEL:-gemini-2.5-flash}"
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      # Crawl4AI (subprocess uses CRAWL_SCRIPT_PATH; HTTP mode uses CRAWL4AI_SERVICE_URL)
+      CRAWL4AI_SERVICE_URL: "${CRAWL4AI_SERVICE_URL:-}"
+      CRAWL4AI_API_KEY: "${CRAWL4AI_API_KEY:-}"
+      CRAWL4AI_CDP_URL: "${CRAWL4AI_CDP_URL:-}"
+      CRAWL4AI_BROWSER_MODE: "${CRAWL4AI_BROWSER_MODE:-}"
+      PYTHON_PATH: "${PYTHON_PATH:-python3}"
+      CRAWL_SCRIPT_PATH: "${CRAWL_SCRIPT_PATH:-scripts/crawl4ai_runner.py}"
     depends_on:
       chromedp:
         condition: service_started
       ollama:
         condition: service_started
+    restart: unless-stopped
+
+  # Set CRAWL4AI_SERVICE_URL=http://crawl4ai:8765 in .env when using backend crawl4ai.
+  crawl4ai:
+    build: .
+    entrypoint: ["python3"]
+    command:
+      [
+        "/app/scripts/crawl4ai_runner.py",
+        "serve",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8765",
+      ]
+    working_dir: /app
+    expose:
+      - "8765"
+    env_file: .env
+    environment:
+      # When set, POST /scrape requires X-API-Key (must match app CRAWL4AI_API_KEY)
+      CRAWL4AI_SERVE_TOKEN: "${CRAWL4AI_API_KEY:-}"
     restart: unless-stopped
 
   chromedp:

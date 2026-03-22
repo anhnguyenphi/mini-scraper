@@ -13,20 +13,24 @@ import (
 )
 
 var (
-	cdpURL           string
-	provider         string
-	ollamaURL        string
-	ollamaModel      string
-	geminiModel      string
-	geminiBaseURL    string
-	geminiAPIKey     string
-	openrouterModel  string
-	openrouterAPIKey string
-	timeout          int
-	raw              bool
-	backend          string
-	pythonPath       string
-	crawlScriptPath  string
+	cdpURL              string
+	provider            string
+	ollamaURL           string
+	ollamaModel         string
+	geminiModel         string
+	geminiBaseURL       string
+	geminiAPIKey        string
+	openrouterModel     string
+	openrouterAPIKey    string
+	timeout             int
+	raw                 bool
+	backend             string
+	pythonPath          string
+	crawlScriptPath     string
+	crawl4aiServiceURL  string
+	crawl4aiAPIKey      string
+	crawl4aiCDPURL      string
+	crawl4aiBrowserMode string
 )
 
 var rootCmd = &cobra.Command{
@@ -51,6 +55,10 @@ func init() {
 	rootCmd.Flags().StringVar(&cdpURL, "cdp", "ws://127.0.0.1:9222", "Lightpanda CDP WebSocket URL")
 	rootCmd.Flags().StringVar(&pythonPath, "python", "python3", "Python path for crawl4ai backend")
 	rootCmd.Flags().StringVar(&crawlScriptPath, "crawl-script", "scripts/crawl4ai_runner.py", "Path to crawl4ai runner script")
+	rootCmd.Flags().StringVar(&crawl4aiServiceURL, "crawl4ai-service", "", "Crawl4AI HTTP server base URL (optional; persistent browser). Env: CRAWL4AI_SERVICE_URL")
+	rootCmd.Flags().StringVar(&crawl4aiAPIKey, "crawl4ai-api-key", "", "X-API-Key for crawl4ai HTTP server. Env: CRAWL4AI_API_KEY")
+	rootCmd.Flags().StringVar(&crawl4aiCDPURL, "crawl4ai-cdp-url", "", "WebSocket CDP URL for crawl4ai (attach to existing browser). Env: CRAWL4AI_CDP_URL")
+	rootCmd.Flags().StringVar(&crawl4aiBrowserMode, "crawl4ai-browser-mode", "", "browser_mode when using CDP (default: custom). Env: CRAWL4AI_BROWSER_MODE")
 	rootCmd.Flags().StringVar(&provider, "provider", summarizer.ProviderOllama, "Summarization provider: ollama, gemini, or openrouter")
 	rootCmd.Flags().StringVar(&ollamaURL, "ollama", "http://127.0.0.1:11434", "Ollama API base URL")
 	rootCmd.Flags().StringVar(&ollamaModel, "model", "qwen3.5:0.8b", "Ollama model to use for summarization")
@@ -162,10 +170,30 @@ func createScraper() (scraper.Scraper, error) {
 
 	switch backendType {
 	case scraper.BackendCrawl4AI:
+		svc := strings.TrimSpace(crawl4aiServiceURL)
+		if svc == "" {
+			svc = strings.TrimSpace(os.Getenv("CRAWL4AI_SERVICE_URL"))
+		}
+		key := strings.TrimSpace(crawl4aiAPIKey)
+		if key == "" {
+			key = strings.TrimSpace(os.Getenv("CRAWL4AI_API_KEY"))
+		}
+		cdp := strings.TrimSpace(crawl4aiCDPURL)
+		if cdp == "" {
+			cdp = strings.TrimSpace(os.Getenv("CRAWL4AI_CDP_URL"))
+		}
+		bm := strings.TrimSpace(crawl4aiBrowserMode)
+		if bm == "" {
+			bm = strings.TrimSpace(os.Getenv("CRAWL4AI_BROWSER_MODE"))
+		}
 		cfg := scraper.Crawl4AIConfig{
-			PythonPath: pythonPath,
-			ScriptPath: crawlScriptPath,
-			Timeout:    time.Duration(timeout) * time.Second,
+			PythonPath:  pythonPath,
+			ScriptPath:  crawlScriptPath,
+			Timeout:     time.Duration(timeout) * time.Second,
+			ServiceURL:  svc,
+			APIKey:      key,
+			CDPURL:      cdp,
+			BrowserMode: bm,
 		}
 		return scraper.NewScraper(scraper.BackendCrawl4AI, cfg)
 

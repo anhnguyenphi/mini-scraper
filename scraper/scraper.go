@@ -47,7 +47,20 @@ type LightpandaConfig struct {
 type Crawl4AIConfig struct {
 	PythonPath string
 	ScriptPath string
+	// ServiceURL, if set, uses the persistent crawl4ai HTTP server (see crawl4ai_runner.py serve).
+	ServiceURL string
+	APIKey     string // X-API-Key for the crawl4ai serve endpoint when auth is enabled.
 	Timeout    time.Duration
+	// TextMode and LightMode default to true (fast) when nil.
+	TextMode  *bool
+	LightMode *bool
+	CacheMode string
+	WaitUntil string
+	// DelayBeforeHTML is seconds before capture (0 = minimal delay).
+	DelayBeforeHTML float64
+	ExtraArgs   []string
+	CDPURL      string // WebSocket CDP URL; empty = launch Playwright browser.
+	BrowserMode string // Used with CDPURL (e.g. custom).
 }
 
 // DefaultLightpandaConfig returns sensible defaults for Lightpanda.
@@ -62,9 +75,13 @@ func DefaultLightpandaConfig() LightpandaConfig {
 // DefaultCrawl4AIConfig returns sensible defaults for Crawl4AI.
 func DefaultCrawl4AIConfig() Crawl4AIConfig {
 	return Crawl4AIConfig{
-		PythonPath: "python3",
-		ScriptPath: "scripts/crawl4ai_runner.py",
-		Timeout:    60 * time.Second,
+		PythonPath:      "python3",
+		ScriptPath:      "scripts/crawl4ai_runner.py",
+		Timeout:         60 * time.Second,
+		CacheMode:       "bypass",
+		WaitUntil:       "domcontentloaded",
+		DelayBeforeHTML: 0,
+		BrowserMode:     "custom",
 	}
 }
 

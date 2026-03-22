@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -14,14 +15,18 @@ import (
 )
 
 type Config struct {
-	CDPURL          string
-	PythonPath      string
-	CrawlScriptPath string
-	OllamaURL       string
-	OllamaModel     string
-	GeminiModel     string
-	GeminiBaseURL   string
-	OpenRouterModel string
+	CDPURL              string
+	PythonPath          string
+	CrawlScriptPath     string
+	Crawl4AIServiceURL  string
+	Crawl4AIAPIKey      string
+	Crawl4AICDPURL      string
+	Crawl4AIBrowserMode string
+	OllamaURL           string
+	OllamaModel         string
+	GeminiModel         string
+	GeminiBaseURL       string
+	OpenRouterModel     string
 }
 
 type Handler struct {
@@ -188,10 +193,30 @@ func (h *Handler) createScraper(backend string) (scraper.Scraper, error) {
 
 	switch backendType {
 	case scraper.BackendCrawl4AI:
+		svc := strings.TrimSpace(h.cfg.Crawl4AIServiceURL)
+		if svc == "" {
+			svc = strings.TrimSpace(os.Getenv("CRAWL4AI_SERVICE_URL"))
+		}
+		key := strings.TrimSpace(h.cfg.Crawl4AIAPIKey)
+		if key == "" {
+			key = strings.TrimSpace(os.Getenv("CRAWL4AI_API_KEY"))
+		}
+		cdp := strings.TrimSpace(h.cfg.Crawl4AICDPURL)
+		if cdp == "" {
+			cdp = strings.TrimSpace(os.Getenv("CRAWL4AI_CDP_URL"))
+		}
+		bm := strings.TrimSpace(h.cfg.Crawl4AIBrowserMode)
+		if bm == "" {
+			bm = strings.TrimSpace(os.Getenv("CRAWL4AI_BROWSER_MODE"))
+		}
 		cfg := scraper.Crawl4AIConfig{
-			PythonPath: h.cfg.PythonPath,
-			ScriptPath: h.cfg.CrawlScriptPath,
-			Timeout:    300 * time.Second,
+			PythonPath:  h.cfg.PythonPath,
+			ScriptPath:  h.cfg.CrawlScriptPath,
+			Timeout:     300 * time.Second,
+			ServiceURL:  svc,
+			APIKey:      key,
+			CDPURL:      cdp,
+			BrowserMode: bm,
 		}
 		return scraper.NewScraper(scraper.BackendCrawl4AI, cfg)
 

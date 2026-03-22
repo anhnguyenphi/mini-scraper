@@ -25,8 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Python packages
 RUN pip install --no-cache-dir 'markitdown[all]'
 
-# Install crawl4ai
-RUN pip install -U --no-cache-dir crawl4ai
+# Install crawl4ai + aiohttp (persistent crawl4ai server: crawl4ai_runner.py serve)
+RUN pip install -U --no-cache-dir crawl4ai aiohttp
 
 # Setup crawl4ai (installs Playwright browsers)
 RUN crawl4ai-setup
