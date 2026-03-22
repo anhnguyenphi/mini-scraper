@@ -22,6 +22,8 @@ func init() {
 	serveCmd.Flags().String("listen", ":8080", "Address to listen on")
 	serveCmd.Flags().String("db", "scraper-ai.db", "SQLite database path for caching")
 	serveCmd.Flags().String("cdp", "ws://127.0.0.1:9222", "Lightpanda CDP WebSocket URL")
+	serveCmd.Flags().String("python", "python3", "Python path for crawl4ai backend")
+	serveCmd.Flags().String("crawl-script", "scripts/crawl4ai_runner.py", "Path to crawl4ai runner script")
 	serveCmd.Flags().String("ollama", "http://127.0.0.1:11434", "Ollama API base URL")
 	serveCmd.Flags().String("model", "qwen3.5:0.8b", "Ollama model to use")
 	serveCmd.Flags().String("gemini-model", "gemini-1.5-flash", "Gemini model to use")
@@ -46,6 +48,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	cfg := api.Config{
 		CDPURL:          flagOrEnv(cmd, "cdp", "CDP_URL", "ws://127.0.0.1:9222"),
+		PythonPath:      flagOrEnv(cmd, "python", "PYTHON_PATH", "python3"),
+		CrawlScriptPath: flagOrEnv(cmd, "crawl-script", "CRAWL_SCRIPT_PATH", "scripts/crawl4ai_runner.py"),
 		OllamaURL:       flagOrEnv(cmd, "ollama", "OLLAMA_URL", "http://127.0.0.1:11434"),
 		OllamaModel:     flagOrEnv(cmd, "model", "OLLAMA_MODEL", "qwen3.5:0.8b"),
 		GeminiModel:     flagOrEnv(cmd, "gemini-model", "GEMINI_MODEL", "gemini-1.5-flash"),

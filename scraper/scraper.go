@@ -4,61 +4,96 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/chromedp/chromedp"
 )
 
-// Config holds scraper configuration.
-type Config struct {
+const (
+	ModeRaw      = "raw"
+	ModeMarkdown = "markdown"
+)
+
+type BackendType string
+
+const (
+	BackendLightpanda BackendType = "lightpanda"
+	BackendCrawl4AI   BackendType = "crawl4ai"
+)
+
+// Scraper is the interface that all scraper backends must implement.
+type Scraper interface {
+	// Fetch retrieves the rendered HTML from a URL.
+	Fetch(ctx context.Context, url string) (string, error)
+
+	// Scrape fetches the page and optionally converts to markdown.
+	Scrape(ctx context.Context, url string, mode string) (*ScrapeResult, error)
+
+	// Close cleans up resources.
+	Close() error
+}
+
+// ScrapeResult contains the scraped content.
+type ScrapeResult struct {
+	HTML     string
+	Markdown string
+}
+
+// LightpandaConfig holds configuration for the Lightpanda/CDP scraper.
+type LightpandaConfig struct {
 	CDPURL      string
 	Timeout     time.Duration
 	WaitForIdle bool
 }
 
-// DefaultConfig returns sensible defaults.
-func DefaultConfig() Config {
-	return Config{
+// Crawl4AIConfig holds configuration for the Crawl4AI scraper.
+type Crawl4AIConfig struct {
+	PythonPath string
+	ScriptPath string
+	Timeout    time.Duration
+}
+
+// DefaultLightpandaConfig returns sensible defaults for Lightpanda.
+func DefaultLightpandaConfig() LightpandaConfig {
+	return LightpandaConfig{
 		CDPURL:      "ws://127.0.0.1:9222",
 		Timeout:     30 * time.Second,
 		WaitForIdle: true,
 	}
 }
 
-// Scraper connects to Lightpanda via CDP and fetches page HTML.
-type Scraper struct {
-	cfg Config
+// DefaultCrawl4AIConfig returns sensible defaults for Crawl4AI.
+func DefaultCrawl4AIConfig() Crawl4AIConfig {
+	return Crawl4AIConfig{
+		PythonPath: "python3",
+		ScriptPath: "scripts/crawl4ai_runner.py",
+		Timeout:    60 * time.Second,
+	}
 }
 
-// New creates a new Scraper.
-func New(cfg Config) *Scraper {
-	return &Scraper{cfg: cfg}
+// NewScraper creates a new Scraper based on the backend type.
+func NewScraper(backend BackendType, config interface{}) (Scraper, error) {
+	switch backend {
+	case BackendLightpanda:
+		cfg, ok := config.(LightpandaConfig)
+		if !ok {
+			cfg = DefaultLightpandaConfig()
+		}
+		return NewLightpandaScraper(cfg), nil
+	case BackendCrawl4AI:
+		cfg, ok := config.(Crawl4AIConfig)
+		if !ok {
+			cfg = DefaultCrawl4AIConfig()
+		}
+		return NewCrawl4AIScraper(cfg), nil
+	default:
+		return nil, fmt.Errorf("unknown scraper backend: %s", backend)
+	}
 }
 
-// Fetch connects to the CDP server, navigates to url, and returns the rendered HTML.
-func (s *Scraper) Fetch(ctx context.Context, url string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, s.cfg.Timeout)
-	defer cancel()
-
-	allocCtx, allocCancel := chromedp.NewRemoteAllocator(ctx, s.cfg.CDPURL)
-	defer allocCancel()
-
-	browserCtx, browserCancel := chromedp.NewContext(allocCtx)
-	defer browserCancel()
-
-	var html string
-	tasks := chromedp.Tasks{
-		chromedp.Navigate(url),
+// ParseBackend parses a backend type string.
+func ParseBackend(s string) BackendType {
+	switch BackendType(s) {
+	case BackendCrawl4AI:
+		return BackendCrawl4AI
+	default:
+		return BackendLightpanda
 	}
-
-	if s.cfg.WaitForIdle {
-		tasks = append(tasks, chromedp.WaitReady("body"))
-	}
-
-	tasks = append(tasks, chromedp.OuterHTML("html", &html))
-
-	if err := chromedp.Run(browserCtx, tasks); err != nil {
-		return "", fmt.Errorf("scrape %s: %w", url, err)
-	}
-
-	return html, nil
 }

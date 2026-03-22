@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/scraper-ai/scraper-ai/converter"
 	"github.com/scraper-ai/scraper-ai/scraper"
 	"github.com/scraper-ai/scraper-ai/summarizer"
 	"github.com/spf13/cobra"
@@ -25,18 +24,33 @@ var (
 	openrouterAPIKey string
 	timeout          int
 	raw              bool
+	backend          string
+	pythonPath       string
+	crawlScriptPath  string
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "scraper-ai <url>",
 	Short: "Scrape a web page and summarize with Ollama or Gemini",
-	Long:  "A CLI tool that uses Lightpanda (headless browser) to fetch web pages, converts them to markdown, and summarizes with Ollama or Gemini.",
-	Args:  cobra.ExactArgs(1),
-	RunE:  run,
+	Long: `A CLI tool that uses a headless browser to fetch web pages,
+converts them to markdown, and optionally summarizes with AI.
+
+Backend:
+  lightpanda  - Chrome DevTools Protocol (requires Lightpanda/Chrome)
+  crawl4ai    - Python crawl4ai library (requires: pip install crawl4ai)
+
+Mode:
+  raw       - Output raw HTML only
+  markdown  - Convert HTML to markdown (default)`,
+	Args: cobra.ExactArgs(1),
+	RunE: run,
 }
 
 func init() {
+	rootCmd.Flags().StringVar(&backend, "backend", "lightpanda", "Scraper backend: lightpanda or crawl4ai")
 	rootCmd.Flags().StringVar(&cdpURL, "cdp", "ws://127.0.0.1:9222", "Lightpanda CDP WebSocket URL")
+	rootCmd.Flags().StringVar(&pythonPath, "python", "python3", "Python path for crawl4ai backend")
+	rootCmd.Flags().StringVar(&crawlScriptPath, "crawl-script", "scripts/crawl4ai_runner.py", "Path to crawl4ai runner script")
 	rootCmd.Flags().StringVar(&provider, "provider", summarizer.ProviderOllama, "Summarization provider: ollama, gemini, or openrouter")
 	rootCmd.Flags().StringVar(&ollamaURL, "ollama", "http://127.0.0.1:11434", "Ollama API base URL")
 	rootCmd.Flags().StringVar(&ollamaModel, "model", "qwen3.5:0.8b", "Ollama model to use for summarization")
@@ -44,7 +58,7 @@ func init() {
 	rootCmd.Flags().StringVar(&geminiBaseURL, "gemini-base-url", "https://generativelanguage.googleapis.com/v1beta", "Gemini API base URL")
 	rootCmd.Flags().StringVar(&openrouterModel, "openrouter-model", "google/gemini-2.0-flash-001", "OpenRouter model to use for summarization")
 	rootCmd.Flags().IntVar(&timeout, "timeout", 30, "Timeout in seconds for page loading")
-	rootCmd.Flags().BoolVar(&raw, "raw", false, "Output raw markdown instead of summary")
+	rootCmd.Flags().BoolVar(&raw, "raw", false, "Output raw HTML instead of markdown")
 }
 
 func Execute() {
@@ -57,31 +71,38 @@ func run(cmd *cobra.Command, args []string) error {
 	url := args[0]
 	ctx := context.Background()
 
+	fmt.Fprintf(os.Stderr, "Using backend: %s\n", backend)
+
+	// Create scraper based on backend
+	s, err := createScraper()
+	if err != nil {
+		return fmt.Errorf("create scraper: %w", err)
+	}
+	defer s.Close()
+
+	// Determine mode
+	mode := scraper.ModeMarkdown
+	if raw {
+		mode = scraper.ModeRaw
+	}
+
 	fmt.Fprintf(os.Stderr, "Fetching %s ...\n", url)
 
-	// Step 1: Fetch page via Lightpanda CDP
-	scraperCfg := scraper.Config{
-		CDPURL:  cdpURL,
-		Timeout: time.Duration(timeout) * time.Second,
-	}
-	s := scraper.New(scraperCfg)
-
-	html, err := s.Fetch(ctx, url)
+	result, err := s.Scrape(ctx, url, mode)
 	if err != nil {
-		return fmt.Errorf("fetch: %w", err)
+		return fmt.Errorf("scrape: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "Fetched %d bytes of HTML\n", len(html))
+	fmt.Fprintf(os.Stderr, "Fetched %d bytes of HTML\n", len(result.HTML))
 
-	// Step 2: Convert to markdown
-	markdown, err := converter.HTMLToMarkdown(html)
-	if err != nil {
-		return fmt.Errorf("convert to markdown: %w", err)
-	}
-	fmt.Fprintf(os.Stderr, "Converted to %d chars of markdown\n", len(markdown))
-
-	// If --raw flag, just output markdown
+	// If raw mode, just output HTML
 	if raw {
-		fmt.Println(markdown)
+		fmt.Println(result.HTML)
+		return nil
+	}
+
+	markdown := result.Markdown
+	if markdown == "" {
+		fmt.Fprintf(os.Stderr, "Warning: no markdown returned\n")
 		return nil
 	}
 
@@ -134,4 +155,29 @@ func run(cmd *cobra.Command, args []string) error {
 
 	fmt.Println(strings.TrimSpace(summary))
 	return nil
+}
+
+func createScraper() (scraper.Scraper, error) {
+	backendType := scraper.ParseBackend(backend)
+
+	switch backendType {
+	case scraper.BackendCrawl4AI:
+		cfg := scraper.Crawl4AIConfig{
+			PythonPath: pythonPath,
+			ScriptPath: crawlScriptPath,
+			Timeout:    time.Duration(timeout) * time.Second,
+		}
+		return scraper.NewScraper(scraper.BackendCrawl4AI, cfg)
+
+	case scraper.BackendLightpanda:
+		cfg := scraper.LightpandaConfig{
+			CDPURL:      cdpURL,
+			Timeout:     time.Duration(timeout) * time.Second,
+			WaitForIdle: true,
+		}
+		return scraper.NewScraper(scraper.BackendLightpanda, cfg)
+
+	default:
+		return nil, fmt.Errorf("unknown backend: %s", backend)
+	}
 }

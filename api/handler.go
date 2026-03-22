@@ -9,13 +9,14 @@ import (
 	"time"
 
 	"github.com/scraper-ai/scraper-ai/cache"
-	"github.com/scraper-ai/scraper-ai/converter"
 	"github.com/scraper-ai/scraper-ai/scraper"
 	"github.com/scraper-ai/scraper-ai/summarizer"
 )
 
 type Config struct {
 	CDPURL          string
+	PythonPath      string
+	CrawlScriptPath string
 	OllamaURL       string
 	OllamaModel     string
 	GeminiModel     string
@@ -29,11 +30,19 @@ type Handler struct {
 }
 
 func NewHandler(cfg Config, c *cache.Store) *Handler {
+	if cfg.PythonPath == "" {
+		cfg.PythonPath = "python3"
+	}
+	if cfg.CrawlScriptPath == "" {
+		cfg.CrawlScriptPath = "scripts/crawl4ai_runner.py"
+	}
 	return &Handler{cfg: cfg, cache: c}
 }
 
 type ScrapeRequest struct {
 	URL             string `json:"url"`
+	Mode            string `json:"mode"`
+	Backend         string `json:"backend"`
 	Provider        string `json:"provider"`
 	OllamaURL       string `json:"ollama_url,omitempty"`
 	OllamaModel     string `json:"ollama_model,omitempty"`
@@ -47,6 +56,7 @@ type ScrapeRequest struct {
 
 type ScrapeResponse struct {
 	URL      string `json:"url"`
+	Backend  string `json:"backend,omitempty"`
 	HTML     string `json:"html,omitempty"`
 	Markdown string `json:"markdown,omitempty"`
 	Summary  string `json:"summary,omitempty"`
@@ -87,27 +97,32 @@ func (h *Handler) handleScrape(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("cache read failed: %v", err))
 		return
 	} else {
-		scraperCfg := scraper.Config{
-			CDPURL:  h.cfg.CDPURL,
-			Timeout: 30 * time.Second,
-		}
-		s := scraper.New(scraperCfg)
-
-		html, err := s.Fetch(ctx, req.URL)
+		s, err := h.createScraper(req.Backend)
 		if err != nil {
-			writeError(w, http.StatusBadGateway, fmt.Sprintf("fetch failed: %v", err))
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid backend: %v", err))
 			return
 		}
-		resp.HTML = html
+		defer s.Close()
 
-		markdown, err := converter.HTMLToMarkdown(html)
+		resp.Backend = req.Backend
+		if resp.Backend == "" {
+			resp.Backend = "lightpanda"
+		}
+
+		mode := strings.TrimSpace(req.Mode)
+		if mode == "" {
+			mode = scraper.ModeMarkdown
+		}
+
+		result, err := s.Scrape(ctx, req.URL, mode)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("convert failed: %v", err))
+			writeError(w, http.StatusBadGateway, fmt.Sprintf("scrape failed: %v", err))
 			return
 		}
-		resp.Markdown = markdown
+		resp.HTML = result.HTML
+		resp.Markdown = result.Markdown
 
-		if err := h.cache.Set(req.URL, html, markdown); err != nil {
+		if err := h.cache.Set(req.URL, resp.HTML, resp.Markdown); err != nil {
 			fmt.Printf("cache write failed: %v\n", err)
 		}
 	}
@@ -166,6 +181,31 @@ func (h *Handler) handleScrape(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+func (h *Handler) createScraper(backend string) (scraper.Scraper, error) {
+	backendType := scraper.ParseBackend(backend)
+
+	switch backendType {
+	case scraper.BackendCrawl4AI:
+		cfg := scraper.Crawl4AIConfig{
+			PythonPath: h.cfg.PythonPath,
+			ScriptPath: h.cfg.CrawlScriptPath,
+			Timeout:    300 * time.Second,
+		}
+		return scraper.NewScraper(scraper.BackendCrawl4AI, cfg)
+
+	case scraper.BackendLightpanda:
+		cfg := scraper.LightpandaConfig{
+			CDPURL:      h.cfg.CDPURL,
+			Timeout:     300 * time.Second,
+			WaitForIdle: true,
+		}
+		return scraper.NewScraper(scraper.BackendLightpanda, cfg)
+
+	default:
+		return nil, fmt.Errorf("unknown backend: %s", backend)
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
